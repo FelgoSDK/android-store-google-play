@@ -30,3 +30,4 @@ proguard/
 .idea/
 
 libs/IInAppBillingService.jar
+/.gradle

@@ -1,0 +1,16 @@
+apply plugin: 'java'
+
+sourceSets {
+    main {
+        java.srcDirs = ['src']
+    }
+}
+
+dependencies {
+    implementation fileTree(dir: 'libs')
+
+    implementation group: 'com.google.android', name: 'android', version: '4.1.1.4'
+}
+
+targetCompatibility = '1.7'
+sourceCompatibility = '1.7'
