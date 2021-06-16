@@ -19,14 +19,14 @@ package com.soomla.store.billing.google;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
-import android.content.ServiceConnection;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.os.Handler;
-import android.os.IBinder;
 import android.os.RemoteException;
 import android.text.TextUtils;
 
+import com.android.billingclient.api.AcknowledgePurchaseParams;
+import com.android.billingclient.api.AcknowledgePurchaseResponseListener;
 import com.android.billingclient.api.BillingClient;
 import com.android.billingclient.api.BillingClientStateListener;
 import com.android.billingclient.api.BillingFlowParams;
@@ -47,15 +47,15 @@ import com.soomla.store.billing.IabInventory;
 import com.soomla.store.billing.IabPurchase;
 import com.soomla.store.billing.IabResult;
 import com.soomla.store.billing.IabSkuDetails;
+import com.soomla.store.data.StoreInfo;
+import com.soomla.store.domain.PurchasableVirtualItem;
+import com.soomla.store.domain.VirtualItem;
+import com.soomla.store.exceptions.VirtualItemNotFoundException;
 
 import org.json.JSONException;
 
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 
 
 /**
@@ -135,7 +135,6 @@ public class GoogleIabHelper extends IabHelper implements PurchasesUpdatedListen
     }
 
     @Override public void onPurchasesUpdated(BillingResult billingResult, List<Purchase> list) {
-        IabResult result;
 
         int responseCode = billingResult.getResponseCode();
 
@@ -146,13 +145,13 @@ public class GoogleIabHelper extends IabHelper implements PurchasesUpdatedListen
             SoomlaUtils.LogDebug(TAG, "IabPurchase canceled.");
             try {
                 IabPurchase purchase = new IabPurchase(mPurchasingItemType, "{\"productId\":" + mPurchasingItemSku + "}", null);
-                result = new IabResult(IabResult.BILLING_RESPONSE_RESULT_USER_CANCELED, "User canceled.");
+                IabResult result = new IabResult(IabResult.BILLING_RESPONSE_RESULT_USER_CANCELED, "User canceled.");
                 purchaseFailed(result, purchase);
                 return;
             } catch (JSONException e) {
                 SoomlaUtils.LogError(TAG, "Failed to generate canceled purchase.");
                 e.printStackTrace();
-                result = new IabResult(IabResult.IABHELPER_BAD_RESPONSE, "Failed to generate canceled purchase.");
+                IabResult result = new IabResult(IabResult.IABHELPER_BAD_RESPONSE, "Failed to generate canceled purchase.");
                 purchaseFailed(result, null);
                 return;
             }
@@ -164,7 +163,7 @@ public class GoogleIabHelper extends IabHelper implements PurchasesUpdatedListen
 
             if (list.isEmpty()) {
                 SoomlaUtils.LogError(TAG, "BUG: purchase list is empty.");
-                result = new IabResult(IabResult.IABHELPER_UNKNOWN_ERROR, "IAB returned empty purchase list.");
+                IabResult result = new IabResult(IabResult.IABHELPER_UNKNOWN_ERROR, "IAB returned empty purchase list.");
                 purchaseFailed(result, null);
                 return;
             }
@@ -182,27 +181,66 @@ public class GoogleIabHelper extends IabHelper implements PurchasesUpdatedListen
                     // Verify signature
                     if (!Security.verifyPurchase(publicKey, p.getOriginalJson(), p.getSignature())) {
                         SoomlaUtils.LogError(TAG, "IabPurchase signature verification FAILED for sku " + sku);
-                        result = new IabResult(IabResult.IABHELPER_VERIFICATION_FAILED, "Signature verification failed for sku " + sku);
+                        IabResult result = new IabResult(IabResult.IABHELPER_VERIFICATION_FAILED, "Signature verification failed for sku " + sku);
                         purchaseFailed(result, purchase);
                         continue;
                     }
+
                     SoomlaUtils.LogDebug(TAG, "IabPurchase signature successfully verified.");
-                }
-                catch (JSONException e) {
+                } catch (JSONException e) {
                     SoomlaUtils.LogError(TAG, "Failed to parse purchase data.");
                     e.printStackTrace();
-                    result = new IabResult(IabResult.IABHELPER_BAD_RESPONSE, "Failed to parse purchase data.");
+                    IabResult result = new IabResult(IabResult.IABHELPER_BAD_RESPONSE, "Failed to parse purchase data.");
                     purchaseFailed(result, null);
                     continue;
                 }
 
-                purchaseSucceeded(purchase);
+
+                VirtualItem vi = null;
+                try {
+                    vi = StoreInfo.getVirtualItem(mPurchasingItemSku);
+                } catch (VirtualItemNotFoundException ignored) {
+                    // shouldn't happen since we are currently purchasing this item
+                }
+
+                // consumable items are consumed SoomlaStore.finalizeTransaction()
+                // others have to be acknowledged after purchasing
+                if(vi instanceof PurchasableVirtualItem && StoreInfo.isItemNonConsumable((PurchasableVirtualItem) vi)) {
+                    SoomlaUtils.LogDebug(TAG, "Acknowledging purchase of non consumable good: " + p.isAcknowledged());
+
+                    final IabPurchase purchaseRef = purchase;
+
+                    mService.acknowledgePurchase(AcknowledgePurchaseParams.newBuilder()
+                        .setPurchaseToken(p.getPurchaseToken())
+                        .build(), new AcknowledgePurchaseResponseListener() {
+                        @Override
+                        public void onAcknowledgePurchaseResponse(BillingResult billingResult) {
+                            if (billingResult.getResponseCode() == BillingClient.BillingResponseCode.OK) {
+                                SoomlaUtils.LogDebug(TAG, "Acknowledged purchase: " + billingResult.getResponseCode());
+
+                                purchaseSucceeded(purchaseRef);
+                            } else {
+                                SoomlaUtils.LogError(TAG, "Could not acknowledge purchase: " +
+                                    billingResult.getDebugMessage() + " (" +
+                                    billingResult.getResponseCode() + ")");
+
+                                IabResult iabResult = new IabResult(IabResult.IABHELPER_VERIFICATION_FAILED, "Item acknowledgement verification failed for sku " + mPurchasingItemSku);
+                                purchaseFailed(iabResult, purchaseRef);
+                            }
+
+                        }
+                    });
+                }
+                else {
+                    purchaseSucceeded(purchase);
+                }
+
             }
         }
         else {
             SoomlaUtils.LogError(TAG, "IabPurchase failed. Response code: " + responseCode
                 + " - " + IabResult.getResponseDesc(responseCode));
-            result = new IabResult(IabResult.IABHELPER_UNKNOWN_PURCHASE_RESPONSE, "Unknown purchase response.");
+            IabResult result = new IabResult(IabResult.IABHELPER_UNKNOWN_PURCHASE_RESPONSE, "Unknown purchase response.");
             purchaseFailed(result, null);
         }
     }
