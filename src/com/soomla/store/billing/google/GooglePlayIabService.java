@@ -563,7 +563,18 @@ public class GooglePlayIabService implements IIabService {
             String payload = intent.getStringExtra(EXTRA_DATA);
 
             try {
-                OnIabPurchaseFinishedListener onIabPurchaseFinishedListener = new OnIabPurchaseFinishedListener();
+                OnIabPurchaseFinishedListener onIabPurchaseFinishedListener = new OnIabPurchaseFinishedListener() {
+                    @Override
+                    public void onIabPurchaseFinished(IabResult result, IabPurchase purchase) {
+                        super.onIabPurchaseFinished(result, purchase);
+
+                        // onActivityResult no longer called with billing client v4
+                        // -> finish this temporary activity here, it is called in any case,
+                        // whether the purchase was successful or not
+                        finish();
+                    }
+                };
+
                 GooglePlayIabService.getInstance().mHelper.launchPurchaseFlow(this, itemType, productId, onIabPurchaseFinishedListener, payload);
                 GooglePlayIabService.getInstance().mWaitingServiceResponse = true;
             } catch (IllegalStateException e) {
@@ -587,6 +598,9 @@ public class GooglePlayIabService implements IIabService {
 
         @Override
         protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+            // this is unused with the billing library v4 -
+            // callbacks happen via the PurchasesUpdatedListener instead now
+
             SoomlaUtils.LogDebug(TAG, "onActivityResult 1");
             if (!GooglePlayIabService.getInstance().mHelper.handleActivityResult(requestCode, resultCode, data)) {
                 SoomlaUtils.LogDebug(TAG, "onActivityResult 2");
