@@ -34,7 +34,9 @@ import com.android.billingclient.api.BillingResult;
 import com.android.billingclient.api.ConsumeParams;
 import com.android.billingclient.api.ConsumeResponseListener;
 import com.android.billingclient.api.Purchase;
+import com.android.billingclient.api.PurchasesResponseListener;
 import com.android.billingclient.api.PurchasesUpdatedListener;
+import com.android.billingclient.api.QueryPurchasesParams;
 import com.android.billingclient.api.SkuDetails;
 import com.android.billingclient.api.SkuDetailsParams;
 import com.android.billingclient.api.SkuDetailsResponseListener;
@@ -56,6 +58,7 @@ import org.json.JSONException;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 
 /**
@@ -547,20 +550,54 @@ public class GoogleIabHelper extends IabHelper implements PurchasesUpdatedListen
      * @throws JSONException
      * @throws RemoteException
      */
-    private int queryPurchases(IabInventory inv, String itemType) throws JSONException, RemoteException {
+    private int queryPurchases(final IabInventory inv, final String itemType) throws JSONException, RemoteException {
         // Query purchases
         SoomlaUtils.LogDebug(TAG, "Querying owned items, item type: " + itemType);
         SoomlaUtils.LogDebug(TAG, "Package name: " + SoomlaApp.getAppContext().getPackageName());
-        boolean verificationFailed = false;
 
         if (mService == null) {
             SoomlaUtils.LogWarning(TAG, "Service was null in queryPurchases().");
             return IabResult.IABHELPER_UNKNOWN_ERROR;
         }
-        Purchase.PurchasesResult purchases = mService.queryPurchases(itemType);
-        List<Purchase> ownedItems = purchases.getPurchasesList();
 
-        int response = purchases.getResponseCode();
+        // note: there is now only an async method to query purchases,
+        // but this method is already called asynchronously
+        // so for now we just wait for the result before returning
+        final AtomicInteger sync = new AtomicInteger();
+
+        mService.queryPurchasesAsync(QueryPurchasesParams.newBuilder().setProductType(itemType).build(), new PurchasesResponseListener() {
+            @Override
+            public void onQueryPurchasesResponse(BillingResult billingResult, List<Purchase> list) {
+                int result = IabResult.BILLING_RESPONSE_RESULT_ERROR;
+                try {
+                    result = GoogleIabHelper.this.onQueryPurchasesResponse(inv, itemType, billingResult, list);
+                } catch (JSONException e) {
+                    SoomlaUtils.LogError(TAG, "Could not handle queryPurchases result: " + e);
+                }
+                synchronized (sync) {
+                    sync.set(result);
+                    sync.notify();
+                }
+            }
+        });
+
+        try {
+            synchronized (sync) {
+                sync.wait();
+            }
+        } catch (InterruptedException e) {
+            SoomlaUtils.LogError(TAG, "Interrupted while waiting for async callback: " + e);
+        }
+
+        return sync.get();
+    }
+
+    private int onQueryPurchasesResponse(IabInventory inv, String itemType,
+                                         BillingResult billingResult,
+                                         List<Purchase> ownedItems) throws JSONException {
+        int response = billingResult.getResponseCode();
+        boolean verificationFailed = false;
+
         SoomlaUtils.LogDebug(TAG, "Owned items response: " + String.valueOf(response));
         if (response != IabResult.BILLING_RESPONSE_RESULT_OK) {
             SoomlaUtils.LogDebug(TAG, "getPurchases() failed: " + IabResult.getResponseDesc(response));
@@ -592,6 +629,7 @@ public class GoogleIabHelper extends IabHelper implements PurchasesUpdatedListen
                     SoomlaUtils.LogWarning(TAG, "IabPurchase signature verification **FAILED**. Not adding item.");
                     SoomlaUtils.LogDebug(TAG, "   IabPurchase data: " + purchaseData);
                     SoomlaUtils.LogDebug(TAG, "   Signature: " + signature);
+
                     verificationFailed = true;
                 }
             }
