@@ -9,7 +9,7 @@ sourceSets {
 dependencies {
     implementation fileTree(dir: 'libs')
 
-    // api 'com.android.billingclient:billing:4.0.0'
+    // api 'com.android.billingclient:billing:7.0.0'
     // Note: no dependency to billingclient, instead only its classes are added as JAR
     // because this is just a plain Java project (billingclient is android AAR)
 
