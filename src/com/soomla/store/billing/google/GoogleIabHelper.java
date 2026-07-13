@@ -33,9 +33,12 @@ import com.android.billingclient.api.BillingFlowParams;
 import com.android.billingclient.api.BillingResult;
 import com.android.billingclient.api.ConsumeParams;
 import com.android.billingclient.api.ConsumeResponseListener;
+import com.android.billingclient.api.ProductDetails;
+import com.android.billingclient.api.ProductDetailsResponseListener;
 import com.android.billingclient.api.Purchase;
 import com.android.billingclient.api.PurchasesResponseListener;
 import com.android.billingclient.api.PurchasesUpdatedListener;
+import com.android.billingclient.api.QueryProductDetailsParams;
 import com.android.billingclient.api.QueryPurchasesParams;
 import com.android.billingclient.api.SkuDetails;
 import com.android.billingclient.api.SkuDetailsParams;
@@ -55,8 +58,10 @@ import com.soomla.store.domain.VirtualItem;
 import com.soomla.store.exceptions.VirtualItemNotFoundException;
 
 import org.json.JSONException;
+import org.json.JSONObject;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -422,23 +427,32 @@ public class GoogleIabHelper extends IabHelper implements PurchasesUpdatedListen
     }
 
     private void fetchSkusDetailsAsyncForType(final IabInventory inv, List<String> skus,
-                                              String type, final Runnable onFinished) {
-        SkuDetailsParams params = SkuDetailsParams.newBuilder()
-            .setSkusList(skus)
-            .setType(type)
-            .build();
+                                              final String type, final Runnable onFinished) {
 
-        mService.querySkuDetailsAsync(params, new SkuDetailsResponseListener() {
+        List<QueryProductDetailsParams.Product> products = new ArrayList<>();
+
+        for (String sku : skus) {
+            products.add(QueryProductDetailsParams.Product.newBuilder()
+                    .setProductId(sku)
+                    .setProductType(type)
+                    .build());
+        }
+
+        QueryProductDetailsParams params = QueryProductDetailsParams.newBuilder()
+                .setProductList(products)
+                .build();
+
+        mService.queryProductDetailsAsync(params, new ProductDetailsResponseListener() {
             @Override
-            public void onSkuDetailsResponse(BillingResult billingResult, List<SkuDetails> list) {
+            public void onProductDetailsResponse(BillingResult billingResult, List<ProductDetails> list) {
 
-                for(SkuDetails detail: list) {
+                for (ProductDetails detail : list) {
                     try {
-                        inv.addSkuDetails(new IabSkuDetails(detail.getType(), detail.getOriginalJson()));
+                        inv.addSkuDetails(new IabSkuDetails(type, productDetailsToSkuJson(detail, type)));
                     } catch (JSONException e) {
                         fetchSkusDetailsFailed(new IabResult(
-                            IabResult.IABHELPER_BAD_RESPONSE,
-                            "Error parsing JSON response while refreshing inventory.")
+                                IabResult.IABHELPER_BAD_RESPONSE,
+                                "Error parsing JSON response while refreshing inventory.")
                         );
                     }
                 }
@@ -449,10 +463,54 @@ public class GoogleIabHelper extends IabHelper implements PurchasesUpdatedListen
     }
 
     /**
+     * Maps a {@link ProductDetails} returned by the modern Billing Library to the
+     * Google Play "SkuDetails" JSON shape expected by SOOMLA's {@link IabSkuDetails}
+     * (the same JSON the deprecated {@code SkuDetails.getOriginalJson()} used to provide).
+     */
+    private String productDetailsToSkuJson(ProductDetails detail, String type) throws JSONException {
+        JSONObject json = new JSONObject();
+        json.put("productId", detail.getProductId());
+        json.put("type", type);
+        json.put("title", detail.getTitle());
+        json.put("description", detail.getDescription());
+
+        String formattedPrice = "";
+        long priceMicros = 0;
+        String currencyCode = "";
+
+        if (BillingClient.ProductType.INAPP.equals(type)) {
+            ProductDetails.OneTimePurchaseOfferDetails offer = detail.getOneTimePurchaseOfferDetails();
+            if (offer != null) {
+                formattedPrice = offer.getFormattedPrice();
+                priceMicros = offer.getPriceAmountMicros();
+                currencyCode = offer.getPriceCurrencyCode();
+            }
+        } else {
+            List<ProductDetails.SubscriptionOfferDetails> offers = detail.getSubscriptionOfferDetails();
+            if (offers != null && !offers.isEmpty()) {
+                List<ProductDetails.PricingPhase> phases =
+                        offers.get(0).getPricingPhases().getPricingPhaseList();
+                if (phases != null && !phases.isEmpty()) {
+                    ProductDetails.PricingPhase phase = phases.get(0);
+                    formattedPrice = phase.getFormattedPrice();
+                    priceMicros = phase.getPriceAmountMicros();
+                    currencyCode = phase.getPriceCurrencyCode();
+                }
+            }
+        }
+
+        json.put("price", formattedPrice);
+        json.put("price_amount_micros", priceMicros);
+        json.put("price_currency_code", currencyCode);
+
+        return json.toString();
+    }
+
+    /**
      * See parent
      */
     @Override
-    protected void launchPurchaseFlowInner(Activity act, String itemType, final String sku, String extraData) {
+    protected void launchPurchaseFlowInner(Activity act, final String itemType, final String sku, String extraData) {
 
         if (!(itemType.equals(ITEM_TYPE_INAPP) || itemType.equals(ITEM_TYPE_SUBS))) {
             throw new IllegalArgumentException("Wrong purchase item type: " + itemType);
@@ -462,23 +520,40 @@ public class GoogleIabHelper extends IabHelper implements PurchasesUpdatedListen
         mPurchasingItemType = itemType;
         SoomlaUtils.LogDebug(TAG, "Launching buy intent for " + sku + ". Request code: " + RC_REQUEST);
 
-        List<String> skuList = new ArrayList<>();
-        skuList.add(sku);
-        SkuDetailsParams.Builder params = SkuDetailsParams.newBuilder();
-        params.setSkusList(skuList).setType(itemType);
-        mService.querySkuDetailsAsync(params.build(),
-            new SkuDetailsResponseListener() {
+        List<QueryProductDetailsParams.Product> products = new ArrayList<>();
+
+        products.add(QueryProductDetailsParams.Product.newBuilder()
+                .setProductId(sku)
+                .setProductType(itemType)
+                .build());
+
+        QueryProductDetailsParams params = QueryProductDetailsParams.newBuilder()
+                .setProductList(products)
+                .build();
+
+        mService.queryProductDetailsAsync(params, new ProductDetailsResponseListener() {
                 @Override
-                public void onSkuDetailsResponse(BillingResult billingResult,
-                                                 List<SkuDetails> skuDetailsList) {
-                    for (SkuDetails skuObj : skuDetailsList) {
-                        if (skuObj.getSku().equals(sku)) {
+                public void onProductDetailsResponse(BillingResult billingResult, List<ProductDetails> list) {
+                    for (ProductDetails detail : list) {
+                        if (detail.getProductId().equals(sku)) {
+                            BillingFlowParams.ProductDetailsParams.Builder pdParams =
+                                    BillingFlowParams.ProductDetailsParams.newBuilder()
+                                            .setProductDetails(detail);
+
+                            // Subscriptions require an offer token
+                            if (ITEM_TYPE_SUBS.equals(itemType)) {
+                                List<ProductDetails.SubscriptionOfferDetails> offers =
+                                        detail.getSubscriptionOfferDetails();
+                                if (offers != null && !offers.isEmpty()) {
+                                    pdParams.setOfferToken(offers.get(0).getOfferToken());
+                                }
+                            }
 
                             // Process the result.
                             BillingFlowParams purchaseParams =
-                                BillingFlowParams.newBuilder()
-                                    .setSkuDetails(skuObj)
-                                    .build();
+                                    BillingFlowParams.newBuilder()
+                                            .setProductDetailsParamsList(Collections.singletonList(pdParams.build()))
+                                            .build();
 
                             mService.launchBillingFlow(SoomlaApp.getActivity(), purchaseParams);
 
