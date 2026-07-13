@@ -8,6 +8,7 @@ import com.soomla.SoomlaApp;
 import com.soomla.SoomlaUtils;
 import com.soomla.store.billing.IabPurchase;
 import com.soomla.store.events.UnexpectedStoreErrorEvent;
+
 import org.apache.http.HttpResponse;
 import org.apache.http.NameValuePair;
 import org.apache.http.client.HttpClient;
@@ -30,7 +31,7 @@ import java.util.Map;
 
 /**
  * @author vedi
- *         date 26/05/15
+ * date 26/05/15
  */
 public class SoomlaGpVerification {
 
@@ -131,8 +132,8 @@ public class SoomlaGpVerification {
                                 }
                             }
                         } else {
-                        SoomlaUtils.LogError(TAG, "An error occurred while trying to get receipt purchaseToken. " +
-                                "Stopping the purchasing process for: " + SoomlaGpVerification.this.purchase.getSku());
+                            SoomlaUtils.LogError(TAG, "An error occurred while trying to get receipt purchaseToken. " +
+                                    "Stopping the purchasing process for: " + SoomlaGpVerification.this.purchase.getSku());
                         }
                     } else {
                         SoomlaUtils.LogError(TAG, "Got null response");
