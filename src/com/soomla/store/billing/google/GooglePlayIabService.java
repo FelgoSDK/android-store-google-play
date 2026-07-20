@@ -19,13 +19,12 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.os.AsyncTask;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Process;
 import android.text.TextUtils;
+
 import com.soomla.SoomlaApp;
 import com.soomla.SoomlaConfig;
 import com.soomla.SoomlaUtils;
@@ -47,7 +46,7 @@ import java.util.Map;
 
 /**
  * This is the Google Play plugin implementation of IIabService.
- *
+ * <p>
  * see parent for more docs.
  */
 public class GooglePlayIabService implements IIabService {
@@ -235,7 +234,7 @@ public class GooglePlayIabService implements IIabService {
                 SoomlaApp.getAppContext().startActivity(intent);
             }
 
-        } catch(Exception e){
+        } catch (Exception e) {
             String msg = "(launchPurchaseFlow) Error purchasing item " + e.getMessage();
             SoomlaUtils.LogError(TAG, msg);
             purchaseListener.fail(msg);
@@ -253,8 +252,7 @@ public class GooglePlayIabService implements IIabService {
      * @param onIabSetupFinishedListener is a callback that lets users to add their own implementation for when the Iab is started
      */
     private synchronized void startIabHelper(OnIabSetupFinishedListener onIabSetupFinishedListener) {
-        if (isIabServiceInitialized())
-        {
+        if (isIabServiceInitialized()) {
             SoomlaUtils.LogDebug(TAG, "The helper is started. Just running the post start function.");
 
             if (onIabSetupFinishedListener != null && onIabSetupFinishedListener.getIabInitListener() != null) {
@@ -294,17 +292,14 @@ public class GooglePlayIabService implements IIabService {
             return;
         }
 
-        if (!mHelper.isAsyncInProgress())
-        {
+        if (!mHelper.isAsyncInProgress()) {
             SoomlaUtils.LogDebug(TAG, "Stopping Google Service");
             mHelper.dispose();
             mHelper = null;
             if (iabInitListener != null) {
                 iabInitListener.success(true);
             }
-        }
-        else
-        {
+        } else {
             String msg = "Cannot stop Google Service during async process. Will be stopped when async operation is finished.";
             if (iabInitListener != null) {
                 iabInitListener.fail(msg);
@@ -371,7 +366,7 @@ public class GooglePlayIabService implements IIabService {
         private IabCallbacks.OnRestorePurchasesListener mRestorePurchasesListener;
 
         public RestorePurchasesFinishedListener(IabCallbacks.OnRestorePurchasesListener restorePurchasesListener) {
-            this.mRestorePurchasesListener            = restorePurchasesListener;
+            this.mRestorePurchasesListener = restorePurchasesListener;
         }
 
         @Override
@@ -401,7 +396,8 @@ public class GooglePlayIabService implements IIabService {
 
             } else {
                 SoomlaUtils.LogError(TAG, "Either mRestorePurchasesListener==null OR Restore purchases error: " + result.getMessage());
-                if (this.mRestorePurchasesListener != null) this.mRestorePurchasesListener.fail(result.getMessage());
+                if (this.mRestorePurchasesListener != null)
+                    this.mRestorePurchasesListener.fail(result.getMessage());
                 stopIabHelper(null);
             }
 
@@ -422,7 +418,7 @@ public class GooglePlayIabService implements IIabService {
         private IabCallbacks.OnFetchSkusDetailsListener mFetchSkusDetailsListener;
 
         public FetchSkusDetailsFinishedListener(IabCallbacks.OnFetchSkusDetailsListener fetchSkusDetailsListener) {
-            this.mFetchSkusDetailsListener            = fetchSkusDetailsListener;
+            this.mFetchSkusDetailsListener = fetchSkusDetailsListener;
         }
 
         @Override
@@ -444,7 +440,8 @@ public class GooglePlayIabService implements IIabService {
                 this.mFetchSkusDetailsListener.success(skuDetails);
             } else {
                 SoomlaUtils.LogError(TAG, "Wither mFetchSkusDetailsListener==null OR Fetching details error: " + result.getMessage());
-                if (this.mFetchSkusDetailsListener != null) this.mFetchSkusDetailsListener.fail(result.getMessage());
+                if (this.mFetchSkusDetailsListener != null)
+                    this.mFetchSkusDetailsListener.fail(result.getMessage());
             }
 
             stopIabHelper(null);
@@ -616,6 +613,7 @@ public class GooglePlayIabService implements IIabService {
         }
 
         boolean firstTime = true;
+
         @Override
         protected void onResume() {
             SoomlaUtils.LogDebug(TAG, "onResume 1");
@@ -648,8 +646,7 @@ public class GooglePlayIabService implements IIabService {
         @Override
         protected void onDestroy() {
             SoomlaUtils.LogDebug(TAG, "onDestroy 1");
-            if (!mInProgressDestroy && GooglePlayIabService.getInstance().mWaitingServiceResponse)
-            {
+            if (!mInProgressDestroy && GooglePlayIabService.getInstance().mWaitingServiceResponse) {
                 SoomlaUtils.LogDebug(TAG, "onDestroy 2");
                 GooglePlayIabService.getInstance().mWaitingServiceResponse = false;
                 String err = "IabActivity is destroyed during purchase.";
@@ -705,7 +702,7 @@ public class GooglePlayIabService implements IIabService {
     /**
      * When set to true, this removes the need to verify purchases when there's no signature.
      * This is useful while you are in development and testing stages of your game.
-     *
+     * <p>
      * WARNING: Do NOT publish your app with this set to true!!!
      */
     public static boolean AllowAndroidTestPurchases = false;

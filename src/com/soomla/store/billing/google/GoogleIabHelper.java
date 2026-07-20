@@ -33,13 +33,13 @@ import com.android.billingclient.api.BillingFlowParams;
 import com.android.billingclient.api.BillingResult;
 import com.android.billingclient.api.ConsumeParams;
 import com.android.billingclient.api.ConsumeResponseListener;
+import com.android.billingclient.api.ProductDetails;
+import com.android.billingclient.api.ProductDetailsResponseListener;
 import com.android.billingclient.api.Purchase;
 import com.android.billingclient.api.PurchasesResponseListener;
 import com.android.billingclient.api.PurchasesUpdatedListener;
+import com.android.billingclient.api.QueryProductDetailsParams;
 import com.android.billingclient.api.QueryPurchasesParams;
-import com.android.billingclient.api.SkuDetails;
-import com.android.billingclient.api.SkuDetailsParams;
-import com.android.billingclient.api.SkuDetailsResponseListener;
 import com.soomla.SoomlaApp;
 import com.soomla.SoomlaConfig;
 import com.soomla.SoomlaUtils;
@@ -55,15 +55,17 @@ import com.soomla.store.domain.VirtualItem;
 import com.soomla.store.exceptions.VirtualItemNotFoundException;
 
 import org.json.JSONException;
+import org.json.JSONObject;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 
 /**
  * This is an implementation of SOOMLA's IabHelper to create a plugin of Google Play to SOOMLA.
- *
+ * <p>
  * More docs in parent.
  */
 public class GoogleIabHelper extends IabHelper implements PurchasesUpdatedListener {
@@ -103,9 +105,9 @@ public class GoogleIabHelper extends IabHelper implements PurchasesUpdatedListen
      */
     protected void startSetupInner() {
         mService = BillingClient.newBuilder(SoomlaApp.getAppContext())
-            .setListener(this)
-            .enablePendingPurchases()
-            .build();
+                .setListener(this)
+                .enablePendingPurchases()
+                .build();
 
         mService.startConnection(new BillingClientStateListener() {
             @Override
@@ -121,7 +123,7 @@ public class GoogleIabHelper extends IabHelper implements PurchasesUpdatedListen
                 int subsResponse = mService.isFeatureSupported(BillingClient.FeatureType.SUBSCRIPTIONS).getResponseCode();
 
                 if (inAppResponse != BillingClient.BillingResponseCode.OK
-                    || subsResponse != BillingClient.BillingResponseCode.OK) {
+                        || subsResponse != BillingClient.BillingResponseCode.OK) {
                     setupFailed(new IabResult(inAppResponse != 0 ? inAppResponse : subsResponse, "Error checking for billing v3 support."));
                     return;
                 }
@@ -171,14 +173,14 @@ public class GoogleIabHelper extends IabHelper implements PurchasesUpdatedListen
                 return;
             }
 
-            for(Purchase p : list) {
+            for (Purchase p : list) {
                 IabPurchase purchase = null;
                 try {
                     purchase = new IabPurchase(mPurchasingItemType, p.getOriginalJson(), p.getSignature());
                     String sku = purchase.getSku();
 
                     SharedPreferences prefs =
-                        SoomlaApp.getAppContext().getSharedPreferences(SoomlaConfig.PREFS_NAME, Context.MODE_PRIVATE);
+                            SoomlaApp.getAppContext().getSharedPreferences(SoomlaConfig.PREFS_NAME, Context.MODE_PRIVATE);
                     String publicKey = prefs.getString(GooglePlayIabService.PUBLICKEY_KEY, "");
 
                     // Verify signature
@@ -208,14 +210,14 @@ public class GoogleIabHelper extends IabHelper implements PurchasesUpdatedListen
 
                 // consumable items are consumed SoomlaStore.finalizeTransaction()
                 // others have to be acknowledged after purchasing
-                if(vi instanceof PurchasableVirtualItem && StoreInfo.isItemNonConsumable((PurchasableVirtualItem) vi)) {
+                if (vi instanceof PurchasableVirtualItem && StoreInfo.isItemNonConsumable((PurchasableVirtualItem) vi)) {
                     SoomlaUtils.LogDebug(TAG, "Acknowledging purchase of non consumable good: " + p.isAcknowledged());
 
                     final IabPurchase purchaseRef = purchase;
 
                     mService.acknowledgePurchase(AcknowledgePurchaseParams.newBuilder()
-                        .setPurchaseToken(p.getPurchaseToken())
-                        .build(), new AcknowledgePurchaseResponseListener() {
+                            .setPurchaseToken(p.getPurchaseToken())
+                            .build(), new AcknowledgePurchaseResponseListener() {
                         @Override
                         public void onAcknowledgePurchaseResponse(BillingResult billingResult) {
                             if (billingResult.getResponseCode() == BillingClient.BillingResponseCode.OK) {
@@ -224,8 +226,8 @@ public class GoogleIabHelper extends IabHelper implements PurchasesUpdatedListen
                                 purchaseSucceeded(purchaseRef);
                             } else {
                                 SoomlaUtils.LogError(TAG, "Could not acknowledge purchase: " +
-                                    billingResult.getDebugMessage() + " (" +
-                                    billingResult.getResponseCode() + ")");
+                                        billingResult.getDebugMessage() + " (" +
+                                        billingResult.getResponseCode() + ")");
 
                                 IabResult iabResult = new IabResult(IabResult.IABHELPER_VERIFICATION_FAILED, "Item acknowledgement verification failed for sku " + mPurchasingItemSku);
                                 purchaseFailed(iabResult, purchaseRef);
@@ -233,16 +235,14 @@ public class GoogleIabHelper extends IabHelper implements PurchasesUpdatedListen
 
                         }
                     });
-                }
-                else {
+                } else {
                     purchaseSucceeded(purchase);
                 }
 
             }
-        }
-        else {
+        } else {
             SoomlaUtils.LogError(TAG, "IabPurchase failed. Response code: " + responseCode
-                + " - " + IabResult.getResponseDesc(responseCode));
+                    + " - " + IabResult.getResponseDesc(responseCode));
             IabResult result = new IabResult(IabResult.IABHELPER_UNKNOWN_PURCHASE_RESPONSE, "Unknown purchase response.");
             purchaseFailed(result, null);
         }
@@ -259,7 +259,7 @@ public class GoogleIabHelper extends IabHelper implements PurchasesUpdatedListen
         SoomlaUtils.LogDebug(TAG, "Disposing.");
         super.dispose();
 
-        if(mService != null) {
+        if (mService != null) {
             SoomlaUtils.LogDebug(TAG, "End BillingService connection.");
             mService.endConnection();
             mService = null;
@@ -267,7 +267,7 @@ public class GoogleIabHelper extends IabHelper implements PurchasesUpdatedListen
     }
 
     /**
-        unused with billing library 4.0.0 - callbacks are in onPurchasesUpdated().
+     * unused with billing library 4.0.0 - callbacks are in onPurchasesUpdated().
      */
     public boolean handleActivityResult(int requestCode, int resultCode, Intent data) {
         return false;
@@ -282,43 +282,42 @@ public class GoogleIabHelper extends IabHelper implements PurchasesUpdatedListen
      * @param itemInfo The PurchaseInfo that represents the item to consume.
      * @throws IabException if there is a problem during consumption.
      */
-     public void consume(IabPurchase itemInfo) throws IabException {
-         checkSetupDoneAndThrow("consume");
+    public void consume(IabPurchase itemInfo) throws IabException {
+        checkSetupDoneAndThrow("consume");
 
         if (!itemInfo.getItemType().equals(ITEM_TYPE_INAPP)) {
             throw new IabException(IabResult.IABHELPER_INVALID_CONSUMPTION,
                     "Items of type '" + itemInfo.getItemType() + "' can't be consumed.");
         }
 
-         String token = itemInfo.getToken();
-         final String sku = itemInfo.getSku();
-         if (token == null || token.equals("")) {
-             SoomlaUtils.LogError(TAG, "Can't consume " + sku + ". No token.");
-             throw new IabException(IabResult.IABHELPER_MISSING_TOKEN, "PurchaseInfo is missing token for sku: "
-                 + sku + " " + itemInfo);
-         }
+        String token = itemInfo.getToken();
+        final String sku = itemInfo.getSku();
+        if (token == null || token.equals("")) {
+            SoomlaUtils.LogError(TAG, "Can't consume " + sku + ". No token.");
+            throw new IabException(IabResult.IABHELPER_MISSING_TOKEN, "PurchaseInfo is missing token for sku: "
+                    + sku + " " + itemInfo);
+        }
 
-         SoomlaUtils.LogDebug(TAG, "Consuming sku: " + sku + ", token: " + token);
+        SoomlaUtils.LogDebug(TAG, "Consuming sku: " + sku + ", token: " + token);
 
-         ConsumeParams params = ConsumeParams.newBuilder()
-             .setPurchaseToken(token)
-             .build();
+        ConsumeParams params = ConsumeParams.newBuilder()
+                .setPurchaseToken(token)
+                .build();
 
-         mService.consumeAsync(params, new ConsumeResponseListener() {
-             @Override public void onConsumeResponse(BillingResult billingResult, String s) {
-                 int response = billingResult.getResponseCode();
-                 if (response == BillingClient.BillingResponseCode.OK) {
-                     SoomlaUtils.LogDebug(TAG, "Successfully consumed sku: " + sku);
-                 } else {
-                     SoomlaUtils.LogDebug(TAG, "Error consuming sku " + sku + ". " +
-                         IabResult.getResponseDesc(response));
-                     // TODO how to report error?
-                     // throw new IabException(response, "Error consuming sku " + sku);
-                 }
-             }
-         });
+        mService.consumeAsync(params, new ConsumeResponseListener() {
+            @Override public void onConsumeResponse(BillingResult billingResult, String s) {
+                int response = billingResult.getResponseCode();
+                if (response == BillingClient.BillingResponseCode.OK) {
+                    SoomlaUtils.LogDebug(TAG, "Successfully consumed sku: " + sku);
+                } else {
+                    SoomlaUtils.LogDebug(TAG, "Error consuming sku " + sku + ". " +
+                            IabResult.getResponseDesc(response));
+                    // TODO how to report error?
+                    // throw new IabException(response, "Error consuming sku " + sku);
+                }
+            }
+        });
     }
-
 
 
     /**
@@ -338,13 +337,15 @@ public class GoogleIabHelper extends IabHelper implements PurchasesUpdatedListen
 
     /**
      * Same as {@link #consumeAsync}, but for multiple items at once.
+     *
      * @param purchases The list of PurchaseInfo objects representing the purchases to consume.
-     * @param listener The listener to notify when the consumption operation finishes.
+     * @param listener  The listener to notify when the consumption operation finishes.
      */
     public void consumeAsync(List<IabPurchase> purchases, OnConsumeMultiFinishedListener listener) {
         checkSetupDoneAndThrow("consume");
         consumeAsyncInternal(purchases, null, listener);
     }
+
     /**
      * Callback that notifies when a consumption operation finishes.
      */
@@ -353,7 +354,7 @@ public class GoogleIabHelper extends IabHelper implements PurchasesUpdatedListen
          * Called to notify that a consumption has finished.
          *
          * @param purchase The purchase that was (or was to be) consumed.
-         * @param result The result of the consumption operation.
+         * @param result   The result of the consumption operation.
          */
         public void onConsumeFinished(IabPurchase purchase, IabResult result);
     }
@@ -366,8 +367,8 @@ public class GoogleIabHelper extends IabHelper implements PurchasesUpdatedListen
          * Called to notify that a consumption of multiple items has finished.
          *
          * @param purchases The purchases that were (or were to be) consumed.
-         * @param results The results of each consumption operation, corresponding to each
-         *     sku.
+         * @param results   The results of each consumption operation, corresponding to each
+         *                  sku.
          */
         public void onConsumeMultiFinished(List<IabPurchase> purchases, List<IabResult> results);
     }
@@ -385,8 +386,7 @@ public class GoogleIabHelper extends IabHelper implements PurchasesUpdatedListen
                 IabInventory inv = null;
                 try {
                     inv = restorePurchases();
-                }
-                catch (IabException ex) {
+                } catch (IabException ex) {
                     IabResult result = ex.getResult();
                     restorePurchasesFailed(result);
                     return;
@@ -404,15 +404,15 @@ public class GoogleIabHelper extends IabHelper implements PurchasesUpdatedListen
     protected void fetchSkusDetailsAsyncInner(final List<String> skus) {
         final IabInventory inv = new IabInventory();
 
-        String[] types = { BillingClient.SkuType.INAPP, BillingClient.SkuType.SUBS };
+        String[] types = {BillingClient.SkuType.INAPP, BillingClient.SkuType.SUBS};
         final List<String> finishedTypes = new ArrayList<>();
 
-        for(final String type: types) {
+        for (final String type : types) {
             fetchSkusDetailsAsyncForType(inv, skus, type, new Runnable() {
                 @Override public void run() {
                     finishedTypes.add(type);
 
-                    if(finishedTypes.size() == 2) {
+                    if (finishedTypes.size() == 2) {
                         // both subs and inapp type are loaded
                         fetchSkusDetailsSuccess(inv);
                     }
@@ -422,23 +422,32 @@ public class GoogleIabHelper extends IabHelper implements PurchasesUpdatedListen
     }
 
     private void fetchSkusDetailsAsyncForType(final IabInventory inv, List<String> skus,
-                                              String type, final Runnable onFinished) {
-        SkuDetailsParams params = SkuDetailsParams.newBuilder()
-            .setSkusList(skus)
-            .setType(type)
-            .build();
+                                              final String type, final Runnable onFinished) {
 
-        mService.querySkuDetailsAsync(params, new SkuDetailsResponseListener() {
+        List<QueryProductDetailsParams.Product> products = new ArrayList<>();
+
+        for (String sku : skus) {
+            products.add(QueryProductDetailsParams.Product.newBuilder()
+                    .setProductId(sku)
+                    .setProductType(type)
+                    .build());
+        }
+
+        QueryProductDetailsParams params = QueryProductDetailsParams.newBuilder()
+                .setProductList(products)
+                .build();
+
+        mService.queryProductDetailsAsync(params, new ProductDetailsResponseListener() {
             @Override
-            public void onSkuDetailsResponse(BillingResult billingResult, List<SkuDetails> list) {
+            public void onProductDetailsResponse(BillingResult billingResult, List<ProductDetails> list) {
 
-                for(SkuDetails detail: list) {
+                for (ProductDetails detail : list) {
                     try {
-                        inv.addSkuDetails(new IabSkuDetails(detail.getType(), detail.getOriginalJson()));
+                        inv.addSkuDetails(new IabSkuDetails(type, productDetailsToSkuJson(detail, type)));
                     } catch (JSONException e) {
                         fetchSkusDetailsFailed(new IabResult(
-                            IabResult.IABHELPER_BAD_RESPONSE,
-                            "Error parsing JSON response while refreshing inventory.")
+                                IabResult.IABHELPER_BAD_RESPONSE,
+                                "Error parsing JSON response while refreshing inventory.")
                         );
                     }
                 }
@@ -449,10 +458,54 @@ public class GoogleIabHelper extends IabHelper implements PurchasesUpdatedListen
     }
 
     /**
+     * Maps a {@link ProductDetails} returned by the modern Billing Library to the
+     * Google Play "SkuDetails" JSON shape expected by SOOMLA's {@link IabSkuDetails}
+     * (the same JSON the deprecated {@code SkuDetails.getOriginalJson()} used to provide).
+     */
+    private String productDetailsToSkuJson(ProductDetails detail, String type) throws JSONException {
+        JSONObject json = new JSONObject();
+        json.put("productId", detail.getProductId());
+        json.put("type", type);
+        json.put("title", detail.getTitle());
+        json.put("description", detail.getDescription());
+
+        String formattedPrice = "";
+        long priceMicros = 0;
+        String currencyCode = "";
+
+        if (BillingClient.ProductType.INAPP.equals(type)) {
+            ProductDetails.OneTimePurchaseOfferDetails offer = detail.getOneTimePurchaseOfferDetails();
+            if (offer != null) {
+                formattedPrice = offer.getFormattedPrice();
+                priceMicros = offer.getPriceAmountMicros();
+                currencyCode = offer.getPriceCurrencyCode();
+            }
+        } else {
+            List<ProductDetails.SubscriptionOfferDetails> offers = detail.getSubscriptionOfferDetails();
+            if (offers != null && !offers.isEmpty()) {
+                List<ProductDetails.PricingPhase> phases =
+                        offers.get(0).getPricingPhases().getPricingPhaseList();
+                if (phases != null && !phases.isEmpty()) {
+                    ProductDetails.PricingPhase phase = phases.get(0);
+                    formattedPrice = phase.getFormattedPrice();
+                    priceMicros = phase.getPriceAmountMicros();
+                    currencyCode = phase.getPriceCurrencyCode();
+                }
+            }
+        }
+
+        json.put("price", formattedPrice);
+        json.put("price_amount_micros", priceMicros);
+        json.put("price_currency_code", currencyCode);
+
+        return json.toString();
+    }
+
+    /**
      * See parent
      */
     @Override
-    protected void launchPurchaseFlowInner(Activity act, String itemType, final String sku, String extraData) {
+    protected void launchPurchaseFlowInner(Activity act, final String itemType, final String sku, String extraData) {
 
         if (!(itemType.equals(ITEM_TYPE_INAPP) || itemType.equals(ITEM_TYPE_SUBS))) {
             throw new IllegalArgumentException("Wrong purchase item type: " + itemType);
@@ -462,37 +515,54 @@ public class GoogleIabHelper extends IabHelper implements PurchasesUpdatedListen
         mPurchasingItemType = itemType;
         SoomlaUtils.LogDebug(TAG, "Launching buy intent for " + sku + ". Request code: " + RC_REQUEST);
 
-        List<String> skuList = new ArrayList<>();
-        skuList.add(sku);
-        SkuDetailsParams.Builder params = SkuDetailsParams.newBuilder();
-        params.setSkusList(skuList).setType(itemType);
-        mService.querySkuDetailsAsync(params.build(),
-            new SkuDetailsResponseListener() {
-                @Override
-                public void onSkuDetailsResponse(BillingResult billingResult,
-                                                 List<SkuDetails> skuDetailsList) {
-                    for (SkuDetails skuObj : skuDetailsList) {
-                        if (skuObj.getSku().equals(sku)) {
+        List<QueryProductDetailsParams.Product> products = new ArrayList<>();
 
-                            // Process the result.
-                            BillingFlowParams purchaseParams =
-                                BillingFlowParams.newBuilder()
-                                    .setSkuDetails(skuObj)
-                                    .build();
+        products.add(QueryProductDetailsParams.Product.newBuilder()
+                .setProductId(sku)
+                .setProductType(itemType)
+                .build());
 
-                            mService.launchBillingFlow(SoomlaApp.getActivity(), purchaseParams);
+        QueryProductDetailsParams params = QueryProductDetailsParams.newBuilder()
+                .setProductList(products)
+                .build();
 
-                            return;
+        mService.queryProductDetailsAsync(params, new ProductDetailsResponseListener() {
+                    @Override
+                    public void onProductDetailsResponse(BillingResult billingResult, List<ProductDetails> list) {
+                        for (ProductDetails detail : list) {
+                            if (detail.getProductId().equals(sku)) {
+                                BillingFlowParams.ProductDetailsParams.Builder pdParams =
+                                        BillingFlowParams.ProductDetailsParams.newBuilder()
+                                                .setProductDetails(detail);
+
+                                // Subscriptions require an offer token
+                                if (ITEM_TYPE_SUBS.equals(itemType)) {
+                                    List<ProductDetails.SubscriptionOfferDetails> offers =
+                                            detail.getSubscriptionOfferDetails();
+                                    if (offers != null && !offers.isEmpty()) {
+                                        pdParams.setOfferToken(offers.get(0).getOfferToken());
+                                    }
+                                }
+
+                                // Process the result.
+                                BillingFlowParams purchaseParams =
+                                        BillingFlowParams.newBuilder()
+                                                .setProductDetailsParamsList(Collections.singletonList(pdParams.build()))
+                                                .build();
+
+                                mService.launchBillingFlow(SoomlaApp.getActivity(), purchaseParams);
+
+                                return;
+                            }
                         }
+
+                        // SKU not found!
+                        SoomlaUtils.LogError(TAG, "Could not find SKU: " + sku);
+
+                        IabResult iabResult = new IabResult(IabResult.IABHELPER_BAD_RESPONSE, "Failed to generate failing purchase.");
+                        purchaseFailed(iabResult, null);
                     }
-
-                    // SKU not found!
-                    SoomlaUtils.LogError(TAG, "Could not find SKU: " + sku);
-
-                    IabResult iabResult = new IabResult(IabResult.IABHELPER_BAD_RESPONSE, "Failed to generate failing purchase.");
-                    purchaseFailed(iabResult, null);
                 }
-            }
         );
     }
 
@@ -502,9 +572,9 @@ public class GoogleIabHelper extends IabHelper implements PurchasesUpdatedListen
     /**
      * The inner functions that consumes purchases.
      *
-     * @param purchases the purchases to consume.
+     * @param purchases      the purchases to consume.
      * @param singleListener The listener to invoke when the consumption completes.
-     * @param multiListener Multi listener for when we have multiple consumption operations.
+     * @param multiListener  Multi listener for when we have multiple consumption operations.
      */
     private void consumeAsyncInternal(final List<IabPurchase> purchases,
                                       final OnConsumeFinishedListener singleListener,
@@ -518,8 +588,7 @@ public class GoogleIabHelper extends IabHelper implements PurchasesUpdatedListen
                     try {
                         consume(purchase);
                         results.add(new IabResult(IabResult.BILLING_RESPONSE_RESULT_OK, "Successful consume of sku " + purchase.getSku()));
-                    }
-                    catch (IabException ex) {
+                    } catch (IabException ex) {
                         results.add(ex.getResult());
                     }
                 }
@@ -605,10 +674,10 @@ public class GoogleIabHelper extends IabHelper implements PurchasesUpdatedListen
         }
 
         SharedPreferences prefs = SoomlaApp.getAppContext()
-            .getSharedPreferences(SoomlaConfig.PREFS_NAME, Context.MODE_PRIVATE);
+                .getSharedPreferences(SoomlaConfig.PREFS_NAME, Context.MODE_PRIVATE);
         String publicKey = prefs.getString(GooglePlayIabService.PUBLICKEY_KEY, "");
 
-        if(ownedItems != null) {
+        if (ownedItems != null) {
             for (Purchase p : ownedItems) {
                 String purchaseData = p.getOriginalJson();
                 String signature = p.getSignature();
@@ -654,11 +723,9 @@ public class GoogleIabHelper extends IabHelper implements PurchasesUpdatedListen
                 throw new IabException(inAppResult != 0 ? inAppResult : subsResult, "Error refreshing inventory (querying owned items).");
             }
             return inv;
-        }
-        catch (RemoteException e) {
+        } catch (RemoteException e) {
             throw new IabException(IabResult.IABHELPER_REMOTE_EXCEPTION, "Remote exception while refreshing inventory.", e);
-        }
-        catch (JSONException e) {
+        } catch (JSONException e) {
             throw new IabException(IabResult.IABHELPER_BAD_RESPONSE, "Error parsing JSON response while refreshing inventory.", e);
         }
     }
@@ -671,9 +738,8 @@ public class GoogleIabHelper extends IabHelper implements PurchasesUpdatedListen
         if (o == null) {
             SoomlaUtils.LogDebug(TAG, "Bundle with null response code, assuming OK (known issue)");
             return IabResult.BILLING_RESPONSE_RESULT_OK;
-        }
-        else if (o instanceof Integer) return ((Integer)o).intValue();
-        else if (o instanceof Long) return (int)((Long)o).longValue();
+        } else if (o instanceof Integer) return ((Integer) o).intValue();
+        else if (o instanceof Long) return (int) ((Long) o).longValue();
         else {
             SoomlaUtils.LogError(TAG, "Unexpected type for bundle response code.");
             SoomlaUtils.LogError(TAG, o.getClass().getName());
@@ -689,9 +755,8 @@ public class GoogleIabHelper extends IabHelper implements PurchasesUpdatedListen
         if (o == null) {
             SoomlaUtils.LogError(TAG, "Intent with no response code, assuming OK (known issue)");
             return IabResult.BILLING_RESPONSE_RESULT_OK;
-        }
-        else if (o instanceof Integer) return ((Integer)o).intValue();
-        else if (o instanceof Long) return (int)((Long)o).longValue();
+        } else if (o instanceof Integer) return ((Integer) o).intValue();
+        else if (o instanceof Long) return (int) ((Long) o).longValue();
         else {
             SoomlaUtils.LogError(TAG, "Unexpected type for intent response code.");
             SoomlaUtils.LogError(TAG, o.getClass().getName());
@@ -699,7 +764,9 @@ public class GoogleIabHelper extends IabHelper implements PurchasesUpdatedListen
         }
     }
 
-    /** Private Members **/
+    /**
+     * Private Members
+     **/
 
     private static String TAG = "SOOMLA GoogleIabHelper";
 
