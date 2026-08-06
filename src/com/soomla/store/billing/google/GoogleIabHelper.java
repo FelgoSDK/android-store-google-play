@@ -33,12 +33,14 @@ import com.android.billingclient.api.BillingFlowParams;
 import com.android.billingclient.api.BillingResult;
 import com.android.billingclient.api.ConsumeParams;
 import com.android.billingclient.api.ConsumeResponseListener;
+import com.android.billingclient.api.PendingPurchasesParams;
 import com.android.billingclient.api.ProductDetails;
 import com.android.billingclient.api.ProductDetailsResponseListener;
 import com.android.billingclient.api.Purchase;
 import com.android.billingclient.api.PurchasesResponseListener;
 import com.android.billingclient.api.PurchasesUpdatedListener;
 import com.android.billingclient.api.QueryProductDetailsParams;
+import com.android.billingclient.api.QueryProductDetailsResult;
 import com.android.billingclient.api.QueryPurchasesParams;
 import com.soomla.SoomlaApp;
 import com.soomla.SoomlaConfig;
@@ -106,7 +108,9 @@ public class GoogleIabHelper extends IabHelper implements PurchasesUpdatedListen
     protected void startSetupInner() {
         mService = BillingClient.newBuilder(SoomlaApp.getAppContext())
                 .setListener(this)
-                .enablePendingPurchases()
+                .enablePendingPurchases(PendingPurchasesParams.newBuilder()
+                        .enableOneTimeProducts()
+                        .build())
                 .build();
 
         mService.startConnection(new BillingClientStateListener() {
@@ -439,7 +443,9 @@ public class GoogleIabHelper extends IabHelper implements PurchasesUpdatedListen
 
         mService.queryProductDetailsAsync(params, new ProductDetailsResponseListener() {
             @Override
-            public void onProductDetailsResponse(BillingResult billingResult, List<ProductDetails> list) {
+            public void onProductDetailsResponse(BillingResult billingResult, QueryProductDetailsResult productDetailsResult) {
+                // only successfully fetched products are processed; unfetched ones are ignored
+                List<ProductDetails> list = productDetailsResult.getProductDetailsList();
 
                 for (ProductDetails detail : list) {
                     try {
@@ -528,8 +534,8 @@ public class GoogleIabHelper extends IabHelper implements PurchasesUpdatedListen
 
         mService.queryProductDetailsAsync(params, new ProductDetailsResponseListener() {
                     @Override
-                    public void onProductDetailsResponse(BillingResult billingResult, List<ProductDetails> list) {
-                        for (ProductDetails detail : list) {
+                    public void onProductDetailsResponse(BillingResult billingResult, QueryProductDetailsResult productDetailsResult) {
+                        for (ProductDetails detail : productDetailsResult.getProductDetailsList()) {
                             if (detail.getProductId().equals(sku)) {
                                 BillingFlowParams.ProductDetailsParams.Builder pdParams =
                                         BillingFlowParams.ProductDetailsParams.newBuilder()
